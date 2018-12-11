@@ -1,7 +1,7 @@
 #' Builds a binary tree.
 #'
 #' @keywords internal
-#'
+#'A
 #' @importFrom stats density 
 #' @importFrom utils flush.console setTxtProgressBar txtProgressBar
  

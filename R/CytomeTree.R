@@ -157,3 +157,6 @@ CytomeTree <- function(M, minleaf = 1, t = .1, verbose = TRUE)
   class(Tree) <- "CytomeTree"
   Tree
 }
+
+
+CytomeTree(M)
