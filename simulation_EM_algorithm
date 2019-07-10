@@ -1,0 +1,190 @@
+
+library(ggcyto)
+
+
+i = "ID01_11_027_ACC2921_Tube_013.fcs"
+file_full = paste0("C:/Users/vht/OneDrive/TCyto/",i)
+
+
+
+FCS = read.FCS(file_full)
+
+colnames(FCS)[which(colnames(FCS)=="SSC-A")] <- "SSCA"
+colnames(FCS)[which(colnames(FCS)=="FSC-A")] <- "FSCA"
+colnames(FCS)[which(colnames(FCS)=="Pacific Orange-A")] <- "CD8"
+colnames(FCS)[which(colnames(FCS)=="Pacific Blue-A")] <- "CD4"
+colnames(FCS)[which(colnames(FCS)=="PE-Texas Red-A")] <- "CD45RA"
+colnames(FCS)[which(colnames(FCS)== "APC-Cy7-A")] <- "CD27"
+colnames(FCS)[which(colnames(FCS)=="PE-Cy7-A")] <- "CCR7"
+colnames(FCS)[which(colnames(FCS)=="PE-Cy5-A")] <- "CD3"
+colnames(FCS)[which(colnames(FCS)=="PE-A")] <- "GranzA"
+colnames(FCS)[which(colnames(FCS)=="FITC-A")] <- "Perf"
+colnames(FCS)[which(colnames(FCS)=="APC-A")] <- "CD28"
+colnames(FCS)[which(colnames(FCS)=="Alexa Fluor 700-A")] <- "GranB"
+
+
+
+
+biexp  <- biexponentialTransform("myTransform",w=10)
+
+
+
+myTrans <-  transformList(c('CD8','CD4',"SSCA","FSCA","CD3","Perf",
+                            "CD28","CD27","GranzA","CD45RA","CCR7","GranB"), biexp)
+
+
+FCS1 = transform(FCS, myTrans)
+
+
+
+
+
+
+p1 = autoplot(FCS,"CD4","CD8",bins = 360)+ xlim(-100,8000) + ylim(-10,10000)
+
+
+
+
+
+p1 = autoplot(FCS1,"CD4","CD8",bins = 360)+ xlim(5,22) + ylim(5,25)
+
+
+
+p2 = ggcyto(FCS1, aes(x = CD4, y = CD8)) + geom_hex(bins = 128) 
+
+
+p2 + geom_gate("CD8")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+outFile <- file.path("D://FCS2.fcs")
+
+## now write out into a file
+write.FCS(FCS1, outFile)
+
+
+
+
+library(ncdfFlow)
+
+file_full1 = "D://FCS2.fcs"
+
+fs1<-read.flowSet(file_full1)
+
+p4 <- ggcyto(fs1, aes(x =CD4, y = CD8)) + geom_hex(bins = 128)
+
+rect.g <- rectangleGate(list("CD4" =  c(17,20), "CD8" = c(12,20)))
+rect.gates <- sapply(sampleNames(fs1), function(sn)rect.g)
+
+p4 + geom_gate(rect.gates) + geom_stats() + annotate(geom = "text", x = 18, y = 14, label  = "CD4+", color = "red")
+
+
+
+
+file_full1
+
+#FCS3 <- (FCS2@exprs)
+
+FCS21 = read.FCS(file_full1)
+
+FCS2 <- (FCS21@exprs)
+
+M1 = FCS2[,c("SSCA","FSCA","CD3","CD4")]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mixt2.EM <- function(y, p, mu, sigma, K)
+{
+  # initialization
+  like <- p[1]*dnorm(y,mu[1],sigma[1]) + p[2]*dnorm(y,mu[2],sigma[2])
+  deviance <- -2*sum(log(like))
+  res <- matrix(NA,K+1,8)
+  res[1,] <- c(0, p, mu, sigma, deviance)
+  for (k in 1:K) {
+    # E step
+    d1<-p[1]*dnorm(y,mu[1],sigma[1])
+    d2<-p[2]*dnorm(y,mu[2],sigma[2])
+    tau1 <-d1/(d1+d2)
+    tau2 <- 1-tau1
+    
+    # M step
+    p[1] <- mean(tau1)
+    mu[1] <- sum(tau1*y)/sum(tau1)
+    sigma[1] <-sqrt(sum(tau1*(y^2))/sum(tau1)-(mu[1])^2)
+    p[2] <- 1-p[1]
+    mu[2] <- sum((tau2)*y)/sum((tau2))
+    sigma[2] <-sqrt(sum(tau2*(y^2))/sum(tau2)-(mu[2])^2)
+    
+    # -2 x LL
+    like <- p[1]*dnorm(y,mu[1],sigma[1]) + p[2]*dnorm(y,mu[2],sigma[2])
+    deviance <- -2*sum(log(like))
+    
+    # add results to output
+    res[k+1,] <- c(k, p, mu, sigma, deviance)
+  }
+  res <- data.frame(res)
+  names(res) <- c("iteration","p1","p2","mu1","mu2","sigma1","sigma2","deviance")
+  out <- list(parameters=c(p, mu, sigma), deviance=deviance, res=res)
+  return(out)
+}
+
+
+
+plotConvMC <- function(df, title=NULL)
+{
+  G <- (ncol(df)-2)/3
+  df$rep <- as.factor(df$rep)
+  graf <- vector("list", ncol(df)-2)
+  for (j in (2:(ncol(df)-1))) {
+    grafj <- ggplot(df)+geom_line(aes_string(df[,1],df[,j],color=df[,ncol(df)])) +
+      xlab("iteration") + ylab(names(df[j])) + theme(legend.position = "none")
+    graf[[j-1]] <- grafj
+  }
+  do.call("grid.arrange", c(graf, ncol=3, top=title))
+}
+
+
+
+
+D.em <- NULL
+set.seed(1234)
+for (m in (1:10)) {
+  p1 <- runif(1,0.1,0.9)
+  df.em <- mixt2.EM(M1$CD4, p=c(p1, 1-p1),mu=rnorm(2,70,15),sigma=rlnorm(2,2,0.7), K=50)$res
+  df.em$rep <- m
+  D.em <- rbind(D.em,df.em)
+}
+plotConvMC(D.em)
+
